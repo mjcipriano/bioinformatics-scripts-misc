@@ -1,0 +1,119 @@
+// File Names
+path = "/home/mcipriano/Desktop/MicroscopyImages/deconvolved/Nnf1p";
+
+fileBASE = "20100714_Nnf1p-GFP_5_5hr_100x_09_";
+fileFITC = "20100714_Nnf1p-GFP_5_5hr_100x_09_w2FITC_cmle.tif";
+fileTRITC ="20100714_Nnf1p-GFP_5_5hr_100x_09_w3TRITC_cmle.tif";
+fileDAPI = "20100714_Nnf1p-GFP_5_5hr_100x_09_w4DAPI_cmle.tif";
+fileDIC ="20100714_Nnf1p-GFP_5_5hr_100x_09_w1DIC.TIF";
+
+
+
+
+function reSlice(start_slice, end_slice) 
+{
+    num_slices = nSlices;
+    setSlice(1);
+    i = 1;
+
+    while(i < start_slice && nSlices > 1)
+    {
+        setSlice(1);
+        run("Delete Slice");
+        i++;
+    }
+
+
+    while(end_slice > 0 && nSlices > 1)
+    {
+        setSlice(nSlices);
+        run("Delete Slice");
+        end_slice--;
+    }
+    return 0;
+}
+
+setBatchMode(1);
+//path = getDirectory("/home/mcipriano/Desktop/MicroscopyImages/deconvolved/Nnf1p");
+
+
+startMISlice = 1;
+stopMISlice = 0;
+contrastValue = 0.2;
+
+// Open Files
+open(path + File.separator + fileFITC);
+reSlice(startMISlice, stopMISlice);
+open(path + File.separator + fileTRITC);
+reSlice(startMISlice, stopMISlice);
+open(path + File.separator + fileDAPI);
+reSlice(startMISlice, stopMISlice);
+open(path + File.separator + fileDIC);
+reSlice(startMISlice, stopMISlice);
+
+// Max Intensity Projection of stacks without DIC
+selectWindow(fileFITC);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+selectWindow(fileTRITC);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+selectWindow(fileDAPI);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+run("Merge Channels...", "red=MAX_"+fileTRITC+ " green=MAX_"+ fileFITC + " blue=MAX_"+ fileDAPI + " gray=*None* create keep");
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+saveAs("Tiff", path + File.separator + fileBASE + "MAX_SINGLE");
+
+// Make Max intensity Montage
+run("Merge Channels...", "red=MAX_"+fileTRITC+ " green=MAX_"+ fileFITC + " blue=MAX_"+ fileDAPI + " gray=" + fileDIC + " create keep");
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(4);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+run("Make Montage...", "columns=2 rows=2 scale=0.50 first=1 last=4 increment=1 border=1 font=12");
+saveAs("Tiff", path + File.separator + fileBASE + "MAX_MONTAGE");
+
+// Create Hyperstack from all channels
+
+run("Merge Channels...", "red="+fileTRITC+ " green="+ fileFITC + " blue="+ fileDAPI + " gray=*None* create keep");
+
+setSlice(round(nSlices/2));
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+saveAs("Tiff", path + File.separator + fileBASE + "STACKS");
+
+while(nImages() > 0)
+{
+	close();
+}
+setBatchMode(0);
+
+
+//open(path + File.separator + fileBASE + "STACKS.tif");
+//setSlice(round(nSlices/2));
+//open(path + File.separator + fileBASE + "MAX_SINGLE.tif");
+//open(path + File.separator + fileBASE + "MAX_MONTAGE.tif");
+
+

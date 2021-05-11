@@ -1,0 +1,12 @@
+img open "/home/mcipriano/Desktop/MicroscopyImages/Huygens/08_14_10_PSF_1tomil_1_DAPI.h5" -query -logEnable -series tool
+img open "/home/mcipriano/Desktop/MicroscopyImages/Huygens/08_14_10_PSF_1tomil_1_FITC.h5" -query -logEnable -series tool
+img open "/home/mcipriano/Desktop/MicroscopyImages/Huygens/09_14_10_PSF_1to1mil_1_TRITC.h5" -query -logEnable -series tool
+
+img open "/home/mcipriano/Desktop/imagej_scripts/test/20101005-nuf2-gfp_4_5hr_100x_01_s10_cell0_STACKS_DAPI.tif" -query -logEnable -series tool
+
+img open "/home/mcipriano/Desktop/imagej_scripts/test/20101005-nuf2-gfp_4_5hr_100x_01_s10_cell0_STACKS_FITC.tif" -query -logEnable -series tool
+
+img open "/home/mcipriano/Desktop/imagej_scripts/test/20101005-nuf2-gfp_4_5hr_100x_01_s10_cell0_STACKS_TRITC.tif" -query -logEnable -series tool
+
+
+

@@ -1,0 +1,28 @@
+list element in braces followed by "taskList" instead of space
+list element in braces followed by "taskList" instead of space
+    while executing
+"lindex $firstLine 0"
+    (procedure "snoopTemplateFile" line 16)
+    invoked from within
+"snoopTemplateFile $type $path"
+    (procedure "loadValidPath" line 3)
+    invoked from within
+"loadValidPath "batch" $path"
+    (procedure "::Template::Batch::load" line 8)
+    invoked from within
+"::Template::Batch::load $vP(topLevel,$v)"
+    (procedure "taskListLoad" line 4)
+    invoked from within
+"taskListLoad $v"
+    (procedure "::WindowBatchV2::fileOpenCB" line 5)
+    invoked from within
+"::WindowBatchV2::fileOpenCB 0"
+    invoked from within
+".batch-0.#batch-0#menuBar.#batch-0#menuBar#menuFile invoke active"
+    ("uplevel" body line 1)
+    invoked from within
+"uplevel #0 [list $w invoke active]"
+    (procedure "tk::MenuInvoke" line 50)
+    invoked from within
+"tk::MenuInvoke .batch-0.#batch-0#menuBar.#batch-0#menuBar#menuFile 1"
+    (command bound to event)

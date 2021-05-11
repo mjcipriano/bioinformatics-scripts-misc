@@ -1,0 +1,66 @@
+// Clear ROIs
+initROI = roiManager("count");
+for(i=0;i<initROI;i++)
+{
+	roiManager("Select", 0);
+	roiManager("Delete");
+}
+
+path = "/home/mcipriano/Desktop/MicroscopyImages/new/deconvolved/"; 
+filename = "20101005-nuf2-gfp_4_5hr_100x_02_s6_STACKS";
+open(path + "/" + filename + ".tif");
+run("Z Project...", "start=1 stop=31 projection=[Average Intensity]");
+run("Stack to Images");
+selectWindow("AVG_" + filename + "-0003");
+setAutoThreshold("Minimum dark");
+run("Convert to Mask");
+run("Options...", "iterations=8 edm=Overwrite count=1");
+run("Dilate");
+run("Options...", "iterations=25 edm=Overwrite count=1");
+run("Close-");
+run("Create Selection");
+roiManager("Split");
+
+numROI = roiManager("count");
+// run("Clear Results");
+
+thisX = newArray(numROI);
+thisY = newArray(numROI);
+thisW= newArray(numROI);
+thisH= newArray(numROI);
+
+addAmt = 60;
+
+for(i=0;i<numROI;i++)
+{
+	roiManager("Select", 0);
+	getSelectionBounds(thisX[i], thisY[i], thisW[i], thisH[i]);
+	roiManager("Delete");
+
+}
+
+for(i=0;i<numROI;i++)
+{
+	numthisX = thisX[i]-addAmt;
+	numthisY = thisY[i]-addAmt;
+	numthisW = thisW[i]+2*addAmt;
+	numthisH= thisH[i]+2*addAmt;
+	if(numthisX < 0)
+	{
+		numthisX = 0;
+	}
+	if(numthisY < 0)
+	{
+		numthisY = 0;
+	}
+
+	makeRectangle(numthisX,numthisY, numthisW, numthisH);
+	roiManager("Add");
+}
+
+for(i=0;i<numROI;i++)
+{
+	selectWindow(filename + ".tif");
+	roiManager("Select", i);
+	run("Duplicate...", "title=" + filename + "_cell" + i + " duplicate");
+}

@@ -1,0 +1,13 @@
+
+
+ ./getflank.pl ../ToxoDB-9.0_TgondiiME49_Genome.fasta ../ToxoDB-9.0_TgondiiME49.gff > allprimers_allslic.txt 
+
+
+
+# find which re would be best to buy
+grep none allprimers_allslic.txt | cut -f15 > nonere.txt
+cat nonere.txt | ./whichbest.pl  | sort -n
+
+# OR
+ grep none allprimers_allslic.txt | cut -f15 | ./whichbest.pl  | sort -n
+

@@ -1,0 +1,194 @@
+path = "/home/mcipriano/Desktop/imagej_scripts/test";
+fileBASE = "20101005-nuf2-gfp_4_5hr_100x_01_s10_";
+fileFITC = "20101005-Nuf2-GFP_4_5hr_100x_01_w2FITC_s10_cmle.tif";
+fileTRITC = "20101005-Nuf2-GFP_4_5hr_100x_01_w3TRITC_s10_cmle.tif";
+fileDAPI = "20101005-Nuf2-GFP_4_5hr_100x_01_w4DAPI_s10_cmle.tif";
+fileDIC = "20101005-Nuf2-GFP_4_5hr_100x_01_w1DIC_s10.TIF";
+
+// Start of Macro
+
+function reSlice(start_slice, end_slice) 
+{
+    num_slices = nSlices;
+    setSlice(1);
+    i = 1;
+
+    while(i < start_slice && nSlices > 1)
+    {
+        setSlice(1);
+        run("Delete Slice");
+        i++;
+    }
+
+
+    while(end_slice > 0 && nSlices > 1)
+    {
+        setSlice(nSlices);
+        run("Delete Slice");
+        end_slice--;
+    }
+    return 0;
+}
+
+setBatchMode(1);
+
+startMISlice = 1;
+stopMISlice = 0;
+contrastValue = 0.2;
+
+
+// Open Files
+if(fileFITC != "*None*")
+{
+    open(path + File.separator + fileFITC);
+    reSlice(startMISlice, stopMISlice);
+}
+if(fileFITC != "*None*")
+{
+    open(path + File.separator + fileTRITC);
+    reSlice(startMISlice, stopMISlice);
+}
+if(fileFITC != "*None*")
+{
+    open(path + File.separator + fileDAPI);
+    reSlice(startMISlice, stopMISlice);
+}
+if(fileFITC != "*None*")
+{
+    open(path + File.separator + fileDIC);
+    reSlice(startMISlice, stopMISlice);
+}
+
+// Max Intensity Projection of stacks without DIC
+selectWindow(fileFITC);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+selectWindow(fileTRITC);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+selectWindow(fileDAPI);
+run("Z Project...", "start=1 stop="+ nSlices + " projection=[Max Intensity]");
+
+run("Merge Channels...", "red=MAX_"+fileTRITC+ " green=MAX_"+ fileFITC + " blue=MAX_"+ fileDAPI + " gray=*None* create keep");
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+saveAs("Tiff", path + File.separator + fileBASE + "MAX_SINGLE");
+
+// Make Max intensity Montage
+
+selectWindow(fileDIC);
+if(nSlices() > 1)
+{
+	reSlice(round(nSlices()/2), round(nSlices()/2));
+}
+
+run("Merge Channels...", "red=MAX_"+fileTRITC+ " green=MAX_"+ fileFITC + " blue=MAX_"+ fileDAPI + " gray=" + fileDIC + " create keep");
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+Stack.setChannel(4);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+run("Make Montage...", "columns=2 rows=2 scale=0.50 first=1 last=4 increment=1 border=1 font=12");
+saveAs("Tiff", path + File.separator + fileBASE + "MAX_MONTAGE");
+
+// Create Hyperstack from all channels
+
+run("Merge Channels...", "red="+fileTRITC+ " green="+ fileFITC + " blue="+ fileDAPI + " gray=*None* create keep");
+
+setSlice(round(nSlices/2));
+
+Stack.setChannel(1);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+Stack.setChannel(2);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+Stack.setChannel(3);
+run("Enhance Contrast", "saturated=" + contrastValue);
+
+saveAs("Tiff", path + File.separator + fileBASE + "STACKS");
+
+selectWindow("MAX_" + fileDAPI);
+
+// Clear ROIs
+initROI = roiManager("count");
+for(i=0;i<initROI;i++)
+{
+	roiManager("Select", 0);
+	roiManager("Delete");
+}
+
+setAutoThreshold("Minimum dark");
+run("Convert to Mask");
+run("Options...", "iterations=8 edm=Overwrite count=1");
+run("Dilate");
+run("Options...", "iterations=25 edm=Overwrite count=1");
+run("Close-");
+run("Create Selection");
+roiManager("Split");
+
+numROI = roiManager("count");
+thisX = newArray(numROI);
+thisY = newArray(numROI);
+thisW= newArray(numROI);
+thisH= newArray(numROI);
+
+
+addAmt = 60;
+
+for(i=0;i<numROI;i++)
+{
+	roiManager("Select", 0);
+	getSelectionBounds(thisX[i], thisY[i], thisW[i], thisH[i]);
+	roiManager("Delete");
+
+}
+
+for(i=0;i<numROI;i++)
+{
+	numthisX = thisX[i]-addAmt;
+	numthisY = thisY[i]-addAmt;
+	numthisW = thisW[i]+2*addAmt;
+	numthisH= thisH[i]+2*addAmt;
+	if(numthisX < 0)
+	{
+		numthisX = 0;
+	}
+	if(numthisY < 0)
+	{
+		numthisY = 0;
+	}
+
+	makeRectangle(numthisX,numthisY, numthisW, numthisH);
+	roiManager("Add");
+}
+
+for(i=0;i<numROI;i++)
+{
+	selectWindow(fileBASE + "STACKS");
+	roiManager("Select", i);
+	run("Duplicate...", "title=" + fileBASE + "cell" + i + " duplicate");
+	saveAs("Tiff", path + File.separator + fileBASE+ "cell" + i + "_STACKS");
+	
+}
+
+
+
+while(nImages() > 0)
+{
+	close();
+}
+
+// End of Macro
+

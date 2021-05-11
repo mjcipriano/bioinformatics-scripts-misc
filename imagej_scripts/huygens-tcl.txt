@@ -1,0 +1,14 @@
+20101005-Nuf2-GFP_4_5hr_100x_01_w2FITC_s14 cmle 08_14_10_PSF_1tomil_1_FITC:0 -> a -sn {25 25 25 25} -it 100 -q 0.01 
+
+20101005-Nuf2-GFP_4_5hr_100x_01_w2FITC_s14 cmle 08_14_10_PSF_1tomil_1_FITC:0 -> a -sn {25 25 25 25} -it 100 -q 0.01 
+
+<file> cmle <PSFFILE:channel0 -> <outfile> -sn {signal-noise signal-noise signal-noise signal-noise} -it <iterations> -q <quality>
+
+a save "/data/home/mcipriano/a.h5" -type hdf5 -cmode query
+=> /data/home/mcipriano/a.h5
+
+a save "/data/home/mcipriano/a.tif" -type tiff16 -tiffMultiDir -cmode query
+=> /data/home/mcipriano/a.tif
+
+
+

@@ -1,0 +1,124 @@
+function varPrint (varName, varValue, numPrint)
+{
+	returnText = "";
+	returnText = returnText + " " + varName + " {";
+	for(i=0;i<numPrint;i++)
+	{
+		returnText = returnText + varValue + " " ;
+	}
+
+	returnText = returnText + "} ";
+
+	returnText = returnText + "parState," + varName + " {";
+	for(i=0;i<numPrint;i++)
+	{
+		returnText = returnText + "verified " ;
+	}
+	returnText = returnText + "} ";
+
+	return returnText;
+}
+
+function varPrintShort (varName, varValue, numPrint)
+{
+	returnText = "";
+	returnText = returnText + " " + varName + " {";
+	for(i=0;i<numPrint;i++)
+	{
+		returnText = returnText + varValue + " " ;
+	}
+
+	returnText = returnText + "} ";
+
+	return returnText;
+}
+
+
+// Variables to change
+
+rootDir = "/home/mcipriano/Desktop/imagej_scripts/test/";
+
+
+inputfilename  = rootDir + "20101005-Nuf2-GFP_4_5hr_100x_01_w4DAPI_s11_cmle.tif";
+outputrootname = rootDir + "20101005-Nuf2-GFP_4_5hr_100x_01_w4DAPI_s11_cmle";
+
+outputfilename = rootDir + "HuygensBatch.hgsb";
+psfDir         = rootDir + "psf/";
+psfDAPI        = psfDir + "PSF_DAPI.h5";
+psfFITC        = psfDir + "PSF_FITC.h5";
+psfTRITC       = psfDir + "PSF_TRITC.h5";
+psfFile        = psfDAPI;
+resultDir      = rootDir + "deconvolved/";
+
+iterations = "100";
+qual = "0.01";
+
+bgMode = "auto";
+brMode = "auto";
+blMode = "auto";
+pad = "auto";
+mode = "fast";
+timeOut = "10000";
+bg = "0";
+
+dx = "157.3";
+dy = "157.3";
+dz = "200";
+dTime = "1.000";
+
+micType = "widefield";
+riMedium = "1.415";
+riLens = "1.515";
+objQual = "good";
+micNA = "1.40";
+excitationWL = "350";
+emissionWL = "430";
+
+signalToNoise = "33";
+
+
+dx_small = d2s( (parseFloat(dx) / 1000), 4); // TODO make 4decimal places 
+dy_small = d2s( (parseFloat(dy) / 1000), 4);
+dz_small = d2s( (parseFloat(dz) / 1000),4); 
+
+
+
+outfile = File.open(outputfilename);
+
+// This is only done once per batch file
+print(outfile, "info {title {Batch processing template} version 2.2 templateName batch_2010-10-12 date {Tue Oct 12 17:53:20 PDT 2010}}");
+print(outfile, "taskList {setEnv taskID:3}");
+print(outfile, "setEnv {resultDir " + resultDir + " perJobThreadCnt auto concurrentJobCnt 1 exportFormat {type tiff16 multidir 1 cmode scale} timeOut " + timeOut + "} ");
+
+// Everything after this is done for each image
+thisText = "taskID:3 {info {state readyToRun tag {setp DAPI_200nm_template cmle Leica_DAPI} "; // This might not matter much
+thisText = thisText + "timeStartAbs 1286931200 timeOut " + timeOut + "} taskList {imgOpen setp cmle imgSave} ";
+thisText = thisText + "imgOpen {path " + inputfilename + " series auto index 0} imgSave {rootName " + outputrootname + "} ";
+thisText = thisText + "setp {s { " + dx_small + " " + dy_small + " " + dz_small + " " + dTime + "} parState,s verified ";
+thisText = thisText + "dx " + dx + " parState,dx verified dy " + dy + " parState,dy verified dz " + dz + " parState,dz verified dt " + dTime + " parState,dt verified ";
+thisText = thisText + "iFacePrim 0.000 parState,iFacePrim verified iFaceScnd 1000000.000 parState,iFaceScnd verified ";
+
+
+thisText = thisText + varPrint("micr", micType, 32);
+thisText = thisText + varPrint("na", micNA, 32);
+thisText = thisText + varPrint("objQuality", objQual, 32);
+thisText = thisText + varPrint("ri", riMedium, 32);
+thisText = thisText + varPrint("ril", riLens, 32);
+thisText = thisText + varPrint("ps", "2.530", 32);
+thisText = thisText + varPrint("pr", "280", 32);
+thisText = thisText + varPrint("ex", excitationWL, 32); // Excitation Wavelength -- Change this
+thisText = thisText + varPrint("em", emissionWL, 32); // Emission Wavelength -- Change this
+thisText = thisText + varPrint("pcnt", "1", 32);
+thisText = thisText + varPrint("exBeamFill", "2.00", 32);
+thisText = thisText + varPrint("imagingDir", "upward", 32);
+
+thisText = thisText + " allVerified 1} ";
+
+
+thisText = thisText + " cmle {psfMode file psfPath " + psfFile + " it " + iterations + " q " + qual + " bgMode " + bgMode + " brMode " + brMode + " blMode " + blMode + " pad " + pad + " mode " + mode + " timeOut " + timeOut ;
+thisText = thisText + varPrintShort("bg", "0.0", 32);
+thisText = thisText + varPrintShort("sn", "33.0", 32);
+
+thisText = thisText + "}} \n";
+
+print(outfile, thisText)

@@ -1,0 +1,4 @@
+envList: resultDir /home/mcipriano/Desktop/imagej_scripts/test/deconvolved perJobThreadCnt 2 concurrentJobCnt 1 OMP_DYNAMIC 1 timeOut 10000 exportFormat {type tiff16 multidir 1 cmode scale}
+envList: resultDir /home/mcipriano/Desktop/imagej_scripts/test/deconvolved perJobThreadCnt 2 concurrentJobCnt 1 OMP_DYNAMIC 1 timeOut 10000 exportFormat {type tiff16 multidir 1 cmode scale}
+envList: resultDir /home/mcipriano/Desktop/imagej_scripts/test/deconvolved perJobThreadCnt 2 concurrentJobCnt 1 OMP_DYNAMIC 1 timeOut 10000 exportFormat {type tiff16 multidir 1 cmode scale}
+envList: resultDir /home/mcipriano/Desktop/imagej_scripts/test/deconvolved perJobThreadCnt 2 concurrentJobCnt 1 OMP_DYNAMIC 1 timeOut 10000 exportFormat {type tiff16 multidir 1 cmode scale}
