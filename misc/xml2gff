@@ -1,0 +1,240 @@
+#!/usr/bin/perl -w
+use strict;
+
+use Bio::Tools::GFF;
+use Bio::SeqIO;
+use XML::DOM;
+use Bio::Seq;
+use DBI;
+
+my $organism = 't_brucei';
+ 
+my $driver = "mysql";
+my $hostname = "mib";
+my $port = "3306";
+my $user = "gid";
+my $password = "NOPE";
+my $database = $organism;
+ 
+my $dsn = "DBI:$driver:database=$database;host=$hostname;port=$port";
+ 
+# File/script locations
+ 
+my $gff_file_name = $organism . '.gff';
+my $fasta_file_name = $organism . '.fas';
+
+my $db_database_name = $organism . "db";
+my $db_supercontig_database_name = $organism . "sc";
+my $db_supercontig_read_database_name = $organism . "screads";
+ 
+my $dbh = DBI->connect($dsn, $user, $password);
+                                                                                                                                                                                 
+    
+my $drh = DBI->install_driver("mysql");
+
+
+my @coord_file_array;
+my @fasta_file_array;
+opendir(DIR, "./");
+
+while(my @dirs = readdir(DIR))
+{
+	foreach my $dir(@dirs)
+	{
+		if(opendir(INNERDIR, $dir))
+		{
+			my @chr_files = readdir(INNERDIR);
+			foreach my $chrfile(@chr_files)
+			{
+				# We are inside all of the directories now, if one of the files is a .coordset file, we want to open it
+				# Check if there is a <TIGR> header and footer, if not, insert one at the begining and end of the file
+				# If so, add the filename to an array which will be handled by the next part of the program
+				my @type = '';
+				@type = split(/\./, $chrfile);
+				if( (scalar @type > 1) && ($type[1] eq 'coordset'))
+				{
+					push(@coord_file_array, $dir . '/' . $chrfile);
+				} elsif( (scalar @type > 1) && ($type[1] eq '1con'))
+				{
+					push(@fasta_file_array, $dir . '/' . $chrfile);
+				}
+			}
+		}
+
+	}
+}
+
+# Now open all files in @coord_file_array and check if they have <TIGR> at the beginning line
+
+foreach my $xml_file (@coord_file_array)
+{
+	open(XMLFILE, $xml_file);
+	my $first_line = <XMLFILE>;
+	chomp($first_line);
+	if($first_line eq '<TIGR>')
+	{
+		print $xml_file . " already processed\n";
+	} else
+	{
+		my $temp_file = $xml_file . '.temp';
+		system('echo "<TIGR>" > ' . $temp_file);
+		system('cat ' . $xml_file . ' >> ' . $temp_file);
+                system('echo "</TIGR>" >> ' . $temp_file);
+		system("cp $temp_file $xml_file");
+		system("rm $temp_file");
+	}
+	close(XMLFILE);
+}
+#exit;
+
+# Take each of the fasta files and put the sequences in a seqio object, rename the header, and spit it out into a new file
+open(FASTA, ">$fasta_file_name");
+
+foreach my $fasta_file(@fasta_file_array)
+{
+	my $in = Bio::SeqIO->new( 	-file => "$fasta_file",
+					-format=> 'Fasta');
+	while( my $seq = $in->next_seq() )
+	{
+		my (undef, $chr, undef, $clone, undef) = split(/\|/,  $seq->id );
+		my $out_name =  $chr . '_' . $clone ;
+		print FASTA '>' . $out_name . "\n";
+		print FASTA $seq->seq();
+		print FASTA "\n";
+	}
+}
+
+
+open(GFF, ">$gff_file_name");
+foreach my $xml_file (@coord_file_array)
+{
+
+        my $xp = new XML::DOM::Parser();
+ 
+        # parse and create tree
+        my $doc = $xp->parsefile($xml_file) or die ("Can not open reads.xml file!");
+
+
+	my $root = $doc->getFirstChild;
+	my @children = $root->getChildNodes();
+	my $i = 0;
+
+
+	
+	foreach my $node (@children)
+	{
+		if( $node->getNodeName() ne "#text")
+		{
+			my $clone_name = '';
+			my $total_bases = '';
+			my $start_base = '';
+			my $stop_base = '';
+			my $dir = '';
+			my $source = 'TIGR';
+
+			my $chr = '';
+			(undef, undef, $chr) = split(/\_/, $xml_file);
+			($chr, undef) = split(/\./, $chr);
+
+			# Get the Clone Name
+			my $clone_element = $node->getElementsByTagName('CLONE_NAME');
+		        $clone_name =  $clone_element->item(0)->getFirstChild->getData;
+                        $clone_name =  'chr_' . $chr . '_' . $clone_name;
+
+			
+			# Get the total number of bases in this clone
+			 (undef, $total_bases) = split('-', $node->getAttributeNode("COORDS")->getValue);
+
+			# Print out the Clone sequence tag
+                        print  GFF $clone_name     . "\t" .
+                        $source         . "\t" .
+                        'clone'   	. "\t" .
+                        '1'     	. "\t" .
+                        $total_bases    . "\t" .
+                        '.'             . "\t" .
+                        '.'             . "\t" .
+                        '.'             . "\t" .
+                        'Sequence ' . $clone_name .
+                        "\n";
+
+
+			# Get the TU elements (annotations)
+			my $annotations = $node->getElementsByTagName("TU");
+			my $n = $annotations->getLength;
+			my $ins_query = 'insert into orfs (
+                                                        orfid,
+                                                        orf_name,
+                                                        annotation,
+                                                        annotation_type,
+                                                        source,
+                                                        delete_fg,
+                                                        delete_reason,
+                                                        contig,
+                                                        start,
+                                                        stop,
+                                                        direction) VALUES (?,?,?,?,?,?,?,?,?,?,?)';
+                                my $ins_h = $dbh->prepare($ins_query);
+			for (my $i = 0; $i < $n; $i++)
+			{
+				my $tu_node = $annotations->item($i);
+				my $feat_name = $tu_node->getAttributeNode("FEAT_NAME")->getValue;
+				my $desc = $tu_node->getAttributeNode("COM_NAME")->getValue;
+                                my $note =  $tu_node->getAttributeNode("PUB_COMMENT")->getValue;
+				if($note eq '' || $note eq ' ')
+				{
+					# Do nothing
+				} else
+				{
+					$note = ' ; Note "' . qq{$note} . '"';
+				}
+
+				($start_base, $stop_base) = split('-', $tu_node->getAttributeNode("COORDS")->getValue);
+				if($start_base > $stop_base)
+				{
+					$dir = '-';
+				} elsif($start_base < $stop_base)
+				{
+					$dir = '+';	
+				} else
+				{
+					$dir = '.';
+				}
+		
+				if($stop_base < $start_base)
+				{
+					my $tmpbase = $start_base;
+					$start_base = $stop_base;
+					$stop_base = $tmpbase;
+				}
+				print 	GFF $clone_name 	. "\t" . 
+					$source 	. "\t" . 
+					'CDS' 		. "\t" . 
+					$start_base 	. "\t" . 
+					$stop_base 	. "\t" . 
+					'.' 		. "\t" . 
+					$dir 		. "\t" .
+                                        '.'             . "\t" .
+					'gene "' . $feat_name . '" ; product "' . qq{$desc} .  '"' . 
+					$note . 
+					"\n";
+				$ins_h->execute(undef, $feat_name, $desc, 'provided', $source, 'N', undef, $clone_name, $start_base, $stop_base, $dir);
+				
+							
+			}
+		}
+	}
+}	
+	 
+#	my $nodes = $doc->getElementsByTagName("TU");
+#        my $n = $nodes->getLength;
+ 
+#        for (my $i = 0; $i < $n; $i++)
+#        {
+#        	my $node = $nodes->item ($i);
+#        	print $node->getAttributeNode("FEAT_NAME")->getValue . "\t";
+#		print $node->getAttributeNode("COM_NAME")->getValue . "\t";
+ #               print $node->getAttributeNode("COM_NAME")->getValue . "\t";
+#		print "\n";
+	   
+#        }
+

@@ -1,0 +1,153 @@
+#!/usr/bin/perl
+
+# regex_fasta : This file will let you search a fasta file of protein or nt sequences for a specific regular expression given in a perl regex form.
+# Developed by Michael Cipriano 2005
+
+use strict;
+use Bio::SeqIO;
+use Getopt::Long;
+
+#my $regex = "(acacacag)";
+# my $regex = "(gtatgtt.+ccaactgacacacag)";
+
+my $regex = undef;
+my $num_to_extract = 1000;
+my $file = undef;
+my $revcom = 1;
+my $output='fasta';
+my $nt = 1;
+my $extractall = 0;
+my $options = 	GetOptions(	"regex=s"	=>\$regex,
+				"num_extract=i"	=>\$num_to_extract,
+				"file=s"	=>\$file,
+				"revcom!"	=>\$revcom,
+				"output=s"	=>\$output,
+				"nt!"		=>\$nt,
+				"extractall"	=>\$extractall
+		);
+
+
+if(!defined($regex) || !defined($file))
+{
+	print "
+
+Valid Options are
+
+--file		The name of the fasta file you would like to search.
+--regex		The regular expression you would like to search (wrap in single quotes, place parenthesis around match).
+--num_extract	How many bases on each side you would like to extract.
+--output	One of either fasta or gff.(Default fasta).
+--norevcom	Do not Reverse complement the match if it is found on the reverse strand (default is to reverse complement the match).
+--nont		Set this only if you want to search a protein sequence.
+--extractall	A flag to extract the whole sequence that matches your regex.
+
+Usage: 
+
+Find all parts of a sequence that start with gtatgtt and end with ccaactgacacacag and get 500 base pairs around that sequence
+regex_fasta --file=myfile.fasta --num_extract=500 --regex='(gtatgtt.+ccaactgacacacag)'
+
+Find all open reading frames
+./regex_fasta --file=/blastdb/giardia14 --regex='(ATG(...)*?(TAA|TAG|TGA))' --num_extract=0
+
+Find all open reading frames with AA size of 30-1000 and get 100 bps of surrounding sequence
+./regex_fasta --file=/blastdb/giardia14 --regex='(ATG(...){30,1000}?(TAA|TAG|TGA))' --num_extract=100
+
+";
+exit;	
+}
+
+my $contigio = Bio::SeqIO->new(-file=>$file, -format=>'fasta');
+
+while(my $seq = $contigio->next_seq)
+{
+#	print $seq->display_id . "\n";
+	# Load it into a sequence object
+	# Check the forward strand
+	my $sequence = $seq->seq();
+	while( $sequence =~ /$regex/gi)
+	{
+		my $match = $1;
+		my $length_match = length($match);
+		my $pos = pos($sequence) + 1 - $length_match;
+		my $end_pos = $length_match + $pos - 1;
+		my $extract_start = $pos - $num_to_extract;
+		my $extract_stop = $end_pos + $num_to_extract;
+		if($extract_start < 1)
+		{
+			$extract_start = 1;
+		}
+		if($extract_stop > $seq->length)
+		{
+			$extract_stop = $seq->length;
+		}
+		if($output eq 'fasta')
+		{
+			if($extractall)
+			{
+				print ">" . $seq->display_id . "\n" . $seq->seq() . "\n";
+			} else
+			{
+				print ">" . $seq->display_id . "_" . $pos . "_" . $end_pos . " $extract_start $extract_stop\n" ;
+				my $new_seq = $seq->trunc($extract_start, $extract_stop);
+				print $new_seq->seq . "\n";
+			}
+		} elsif($output eq 'gff')
+		{
+			print join("\t", $seq->display_id, 'regex', 'repeat_region', $pos, $end_pos, '.', '+', '.', 'Sequence regex ;') . "\n";
+
+		}
+	}
+
+	if(!$nt)
+	{
+		next;
+	}
+	# Reverse
+	my $rev_seq = $seq->revcom();
+	my $sequence = $rev_seq->seq();
+	while( $sequence =~ /$regex/gi)
+	{
+		my $match = $1;
+		my $length_match = length($match);
+		my $pos = pos($sequence) + 1 - $length_match;
+		my $end_pos = $length_match + $pos - 1;
+		# Reverse the coords
+		my $new_end = $seq->length - $end_pos + 1;
+		my $new_start = $seq->length - $pos + 1;
+		my $extract_start = $new_end - $num_to_extract;
+		my $extract_stop = $new_start + $num_to_extract;
+		if($extract_start < 1)
+		{
+			$extract_start = 1;
+		}
+		if($extract_stop > $seq->length)
+		{
+			$extract_stop = $seq->length;
+		}
+		my $new_seq;
+		if($revcom)
+		{
+			$new_seq = $seq->trunc($extract_start, $extract_stop)->revcom();
+		} else
+		{
+			$new_seq = $seq->trunc($extract_start, $extract_stop);
+		}
+
+		if($output eq 'fasta')
+		{
+			if($extractall)
+			{
+				print ">" . $seq->display_id . "\n" . $seq->seq . "\n";
+			} else
+			{
+				print ">" . $seq->display_id . "_" . $new_start . "_" . $new_end . " $extract_start $extract_stop\n";
+				print $new_seq->seq . "\n";
+			}
+		} elsif($output eq 'gff')
+		{
+			print join("\t", $seq->display_id, 'regex', 'repeat_region', $new_end, $new_start, '.', '-', '.', 'Sequence regex ;') . "\n";
+		}
+	}
+	
+
+}

@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+
+use Mbl;
+use Bio::Seq;
+ 
+my $mbl = Mbl::new(undef, $ARGV[0]);
+my $dbh = $mbl->dbh;
+my $regex = $ARGV[1];
+
+my $contigs_h = $dbh->prepare("select contig_number, bases from contigs");
+
+$contigs_h->execute();
+while(my $contig = $contigs_h->fetchrow_hashref)
+{
+	print $contig->{contig_number} . "\n";
+	# Load it into a sequence object
+	my $seq = Bio::Seq->new(-display_id=>$contig->{contig_number}, -seq=>uc($contig->{bases}));
+
+	# Check the forward strand
+	my $sequence = $seq->seq();
+	while( $sequence =~ /($regex)/gi)
+	{
+		my $match = $1;
+		my $length_match = length($match);
+		my $pos = pos $sequence;
+		my $end_pos = $length_match + $pos;
+		print "MATCH at position $pos .. $end_pos\n $match \n\n";
+	}
+
+	# Reverse
+	my $seq = $seq->revcom();
+	my $sequence = $seq->seq();
+	while( $sequence =~ /($regex)/gi)
+	{
+		my $match = $1;
+		my $length_match = length($match);
+		my $pos = pos $sequence;
+		my $end_pos = $length_match + $pos;
+		# Reverse the coords
+		my $new_end = $seq->length - $end_pos + 1;
+		my $new_start = $seq->length - $pos + 1;
+		print "REVMATCH at position $new_start .. $new_end\n $match \n\n";
+	}
+	
+
+}

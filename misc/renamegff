@@ -1,0 +1,10 @@
+
+
+perl -e 'while(<>) { $a = $_; ($b) = $a =~ /est_name\ \"([A-Za-z0-9\.\_]+)\"\ /; print $b . "\n"; }' < a.gff > b.gff
+
+uniq b.gff > b.list
+(place ^ in begining of b.list)
+grep -f b.list ../gff/mini.gff > hits.gff
+grep -v pcr-putitive hits.gff | grep -v pcr-deleted > all_hits.gff
+
+perl -e 'while(<>) { $a = $_; ($b) = $a =~ /query_string\ \"([A-Za-z]+)\"\ /; print $b . "\n"; }' < all_hits.gff

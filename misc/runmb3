@@ -1,0 +1,127 @@
+#!/usr/bin/perl -w
+
+
+# runmb3 
+# run a single mb3 job from the command line on a PBS cluster
+
+## Usage: runmb3 <input file> <email address to notify when done>
+## email address is optional
+
+#
+# Set Up
+#
+
+$queuename = "workq";
+$pathtoexe = "/usr/local/bio/bin";
+
+#changed name to prevent non-cluster accidental use of mb
+$exename = "mb3exe";
+
+$curpwd = `pwd`;
+chomp($curpwd);
+
+
+#
+# Check for arguments
+#
+
+unless (defined(@ARGV)) {
+	print "\tUsage: runmb3 nexusfile <email address to notify when done>\n";
+	exit;
+}
+
+
+#
+# Load and Check NEXUS file
+#
+
+unless (-e "$ARGV[0]") {
+	print "\tFile $ARGV[0] not found.\n";
+	exit;
+}
+
+open(CHECKNEX,"< $ARGV[0]");
+$checknex1="fail";
+$checknex2="fail";
+$checknex3="pass";
+$checknex4="fail";
+$checknex5=0;
+while (defined($checkline=<CHECKNEX>)) {
+	chomp($checkline);
+	if ($checkline =~ /set.*autoc.*yes/i) {
+		$checknex1="pass";
+	}
+	if ($checkline =~ /set.*nowarn.*yes/i) {
+		$checknex2="pass";
+	}
+	if ($checkline =~ /log.*start/i) {
+		$checknex3=$checkline;
+	}		
+	if ($checkline =~ /quit/i) {
+		$checknex4="pass";
+	}
+	if ($checkline =~ /mcmc /i) {
+		$checknex5++;
+	}
+	if ($checkline =~ /sum[pt]/i) {
+		$checknex5++;
+	}	
+}
+close(CHECKNEX);
+
+unless ($checknex1 eq "pass" and $checknex2 eq "pass") {
+	print "\tMrBayes block must contain \"set autoclose=yes nowarnings=yes\"\n";
+	exit;
+}
+
+unless ($checknex3 eq "pass") {
+	print "\tLogging prohibited on cluster: $checknex3\n";
+	exit;
+}
+
+unless ($checknex4 eq "pass") {
+	print "\tMrBayes block must contain \"quit;\"\n";
+	exit;
+}
+
+
+$emailme = 0;
+
+if(defined($ARGV[1])){
+    if( !($ARGV[1] =~ /@/) ){
+	die("Second parameter should be an email address\n");
+    }
+    $emailme = 1;
+    $emailaddr = $ARGV[1];
+}
+
+$scriptname = int(rand(999999));
+
+print "Building and submitting a PBS script for your MrBayes job\n";
+
+#build scripts for each job, submit to PBS
+
+open(SCR, ">${scriptname}.sh");
+
+print SCR "#!/bin/sh\n";
+print SCR "#PBS -j oe\n";
+print SCR "#PBS -o $ARGV[0].bayesout\n";
+print SCR "#PBS -q ${queuename}\n";
+print SCR "#PBS -N mrbayesjob\n";
+print SCR "#PBS -l nodes=1:ppn=1:all\n\n";
+
+if($emailme){
+    print SCR "#PBS -m ae\n";
+    print SCR "#PBS -M $emailaddr\n";    
+}
+
+print SCR "cd ${curpwd}\n";
+print SCR "${pathtoexe}/${exename} $ARGV[0]\n";
+print SCR "/bin/rm -f ${curpwd}/${scriptname}.sh\n";
+close(SCR);
+
+$lastjobid = `qsub ${scriptname}.sh`;
+
+print "MrBayes job submitted to the cluster as job $lastjobid\n";
+
+exit;
