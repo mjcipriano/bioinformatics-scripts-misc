@@ -1,0 +1,468 @@
+#!/usr/bin/perl
+
+
+=head1 NAME
+
+gblast  -- A script that will use a Blast-formatted database and a gbrowse database and allow you to show graphicaly your blast hits
+
+=head1 SYNOPSIS
+
+This script allows you to display graphicaly the results of a blast search using a gbrowse database and some blast formated databases.
+
+
+=head1 DESRIPTION
+
+This script should be placed in your cgi-bin directory.
+
+The script can then be called by going to the following address:
+
+http://my.home.com/cgi-bin/gblast/yeast_chr
+
+Assuming my.home.com is the hostname of your server, cgi-bin is your cgi bin directory where gblast resides, and yeast_chr 
+is the database that you wish to blast against.
+
+=head1 INSTALLATION
+
+Place the gblast script in your cgi-bin directory.  Change any settings as described below.
+
+
+Change any settings in the CONSTANTS portion of this script
+
+  web_server		- This is the internet addressable hostname of this webserver (leave out http://)
+  cgi_home    		- This is your cgi-bin directory where you placed this script
+  gblast_bin		- The name of this script
+  gbrowse_cgi_dir 	- This is the directory which holds the gbrowse executables
+  gbrowse_database_post	- This is if you have a postfix that you place on your gbrowse databases
+  orf_type		- The Class that you use for your open reading frames
+  blast_db_dir		- The directory that holds your blast databases
+
+
+You must then create your blast databases.  This script accounts for 4 different blast databases that are each prefixed with the name
+of the gbrowse database.  For example, if my gbrowse database was called yeast_chr, you would create the following blast databaes
+
+  yeast_chr			- A blast database of the nucleotide sequence of the contigs
+  yeast_chr_orfs_nt		- A blast database of the nucleotides sequence of all of the open reading frames
+  yeast_chr_orfs_aa		- A blast database of the amino acid sequence of all of the open reading frames
+  yeast_chr_unused_reads_nt 	- A blast database of all of the reads that are not used (are not represented by the gbrowse database)
+
+These files must be placed in the correct location as defined by the blast_db_dir variable.
+
+The following subroutines must then be changed to reflect your system.
+
+  get_orf_offset		- This will return the start position of the open reading frame related to it's reference sequence
+  get_orf_contig		- This will return the reference sequence name that a particular orf resides on
+  get_read_link			- This will return the link used for the unused_reads_nt database
+
+=head1 AUTHOR
+
+Michael Cipriano <mcipriano@mbl.edu>.
+
+This is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
+use Mbl;
+use CGI qw(:all);
+use CGI::Pretty;
+use DBI;
+use Bio::Seq;
+use Bio::Tools::Run::StandAloneBlast;
+use Bio::SearchIO::Writer::HTMLResultWriter;
+use Bio::AlignIO;
+use Bio::SeqIO;
+use Bio::Root::IO;
+use IO::String;
+
+ 
+use strict;
+
+
+# CONSTANTS - CHANGE THESE TO YOUR PERSONAL SETTINGS
+
+my $web_server = 'gmod.mbl.edu';
+my $cgi_home = '/cgi-bin/';
+my $gblast_bin = 'gblast';
+my $gblast_cgi = $cgi_home . $gblast_bin;
+my $gbrowse_cgi_dir = '/gb/';
+my $gbrowse_cgi = $gbrowse_cgi_dir . 'gbrowse';
+my $gbrowse_img = $gbrowse_cgi_dir . 'gbrowse_img';
+my $gbrowse_database_post = 'screads';
+my $orf_type = 'orf';
+my $blast_db_dir = '/blastdb';
+
+
+# Gbrowse DATABASE settings
+
+# DO NOT CHANGE ANYTHING BELOW HERE UNLESS BROKEN
+
+my $database = param('organism');
+if(!$database)
+{
+	$database = path_info();
+	$database =~ s!^/!!;
+}
+
+my $organism = $database;
+my $organism_home = $gblast_cgi . '/' . $organism;
+my $gbrowse_organism_cgi = $gbrowse_cgi . '/' . $organism . $gbrowse_database_post;
+my $gbrowse_organism_img = $gbrowse_img . '/' . $organism . $gbrowse_database_post;
+
+$ENV{'BLASTDB'} = $blast_db_dir;
+
+
+print header();
+
+
+if(!param('DATALIB'))
+{
+	print start_multipart_form( -action=>$organism_home, -method=>'POST');
+
+	print '<h3>Database and Program Options:</h3>
+
+<p>
+<a href="/blast/docs/blast_program.html">Program</a>
+';
+
+	print popup_menu(-name=>"PROGRAM", -values=>['blastn', 'blastp', 'blastx', 'tblastn', 'tblastx'],-default=>param('program'));
+
+	my %db_label = (
+		$organism=>'Contig Consensus Sequences (nucleotides)',
+		$organism . '_orfs_nt'=>'Predicted Open Reading Frame Sequences (nucleotides)',
+		$organism . '_orfs_aa'=>'Translated Open Reading Frame Sequences (amino acids)',
+		$organism . '_unused_reads_nt'=>' All Sequence Reads Not Included in Assembly (nucleotides)'
+		);
+	print "Databases
+";
+	print popup_menu(-name=>"DATALIB", -values=>[$organism, $organism . '_orfs_nt', $organism . '_orfs_aa', $organism . '_unused_reads_nt'],-labels=>\%db_label, -default=>param('database'));
+
+
+print '
+<input TYPE="checkbox" VALUE="yes" CHECKED NAME="show_img"> Overlay Hits over Genome Image
+<p>
+Enter sequence below in <a href="http://www.ncbi.nlm.nih.gov/blast/html/search.html">FASTA</a>  format 
+
+<br>
+';
+
+print '<textarea name="SEQUENCE" rows=12 cols=100>';
+print param('seq');
+print '</textarea>';
+
+print '
+<br>
+Or load it from disk 
+<p>
+Set subsequence: From
+&nbsp;&nbsp<input TYPE="text" NAME="QUERY_FROM" VALUE="" SIZE="10">
+&nbsp;&nbsp&nbsp;&nbsp To
+<input TYPE="text" NAME="QUERY_TO" VALUE="" SIZE="10">
+<p>
+<input TYPE="button" VALUE="Clear sequence" onClick="MainBlastForm.SEQUENCE.value="";MainBlastForm.QUERY_FROM.value="";MainBlastForm.QUERY_TO.value="";MainBlastForm.SEQUENCE.focus();">
+<input TYPE="submit" VALUE="Search">
+<hr>
+
+The query sequence is 
+<a href="http://www.ncbi.nlm.nih.gov/blast/html/blastcgihelp.shtml#filter">filtered</a> 
+for low complexity regions by default.
+<br>
+<a href="http://www.ncbi.nlm.nih.gov/blast/html/blastcgihelp.shtml#filter">Filter</a>
+ <input TYPE="checkbox" VALUE="L" NAME="FILTER" CHECKED> Low complexity
+<p>
+<a href="http://www.ncbi.nlm.nih.gov/blast/html/blastcgihelp.shtml#expect">Expect</a>
+<select name ="EXPECT">
+    <option> 0.0001 
+    <option> 0.01 
+    <option selected> 1 
+    <option> 10 
+    <option> 100 
+    <option> 1000 
+
+</select>
+&nbsp;&nbsp;
+
+<a href=""http://www.ncbi.nlm.nih.gov/blast/html/blastcgihelp.shtml#Matrix">Matrix</a>
+<select name ="MAT_PARAM">
+    <option value ="PAM30"> PAM30 </option>
+    <option value ="PAM70"> PAM70 </option> 
+    <option value ="BLOSUM80"> BLOSUM80 </option>
+
+    <option selected value ="BLOSUM62"> BLOSUM62 </option>
+    <option value ="BLOSUM45"> BLOSUM45 </option>
+</select>
+<p>
+<a href=""http://www.ncbi.nlm.nih.gov/blast/html/blastcgihelp.shtml#">Frame shift penalty</a> for blastx 
+<select NAME =" OOF_ALIGN"> 
+ <option> 6
+ <option> 7
+ <option> 8
+ <option> 9
+ <option> 10
+ <option> 11
+ <option> 12
+ <option> 13
+ <option> 14
+ <option> 15
+ <option> 16
+ <option> 17
+ <option> 18
+ <option> 19
+ <option> 20
+ <option> 25   
+ <option> 30
+ <option> 50
+ <option> 1000
+ <option selected VALUE =" 0"> No OOF
+
+</select>
+<p>
+<hr>
+<p>
+<input TYPE="button" VALUE="Clear sequence" onClick="MainBlastForm.SEQUENCE.value="";MainBlastForm.SEQUENCE.focus();">
+<input TYPE="submit" VALUE="Search">
+</form>
+		</td>
+</table>
+<p><i>Powered by the <a href="http://www.ncbi.nlm.nih.gov/BLAST/">NCBI Blast Programs</a> and <a href="http://www.bioperl.org">BioPerl</a>.</i></p>
+
+		</td>
+		<td width="4%"></td>
+		<td width="48%" valign="top">
+			<table border=0 width="100%">
+			<tr>
+				<td>
+
+				
+				</td>
+			</tr>
+			</table>		
+		</td>
+	</tr>
+
+</table>
+';
+
+} else
+{
+ 
+
+ 
+	my @params = (  'program' => param('PROGRAM'),
+	                'database' =>  param('DATALIB')
+	);
+
+	my $stringio = IO::String->new(uc(param('SEQUENCE')));
+	my $seq;
+ 
+	my $factory = Bio::Tools::Run::StandAloneBlast->new(@params);
+	my $writerhtml = new Bio::SearchIO::Writer::HTMLResultWriter();
+
+	if(param('FILTER'))
+	{
+		$factory->F('T');
+	} else
+	{
+		$factory->F('F');
+	}
+
+	if(param('ALIGNMENTS'))
+	{
+		$factory->B(param('ALIGNMENTS'));
+	}
+
+	if(param('DESCRIPTIONS'))
+	{
+		$factory->V(param('DESCRIPTIONS'));
+	}
+
+	if(param('EXPECT'))
+	{
+		$factory->e(param('EXPECT'));
+	}
+
+	if(param('OOF_ALIGN'))
+	{
+		$factory->w(param('OOF_ALIGN'));
+	}
+
+	if(param('MAT_PARAM'))
+	{
+	        $factory->M(param('MAT_PARAM'));
+	}
+
+
+	my $seqs;
+	eval {$seqs = Bio::SeqIO->new( '-fh' =>$stringio);};
+
+	if($@)
+	{
+		print "<h2><b>Sequence Not in recognized format</b></h2>";
+	} else
+	{
+
+		while(my $input = $seqs->next_seq())
+		{
+
+			my $blast_report;
+
+			eval { $blast_report = $factory->blastall($input); };
+			if($@)
+			{
+				print "<h2><b>Error: Wrong combination of program, database and search string</b></h2><hr>";
+			} else
+			{
+	
+				my $this_result = $blast_report->next_result;
+	 
+	
+				$writerhtml->start_report(\&my_start_report);
+				$writerhtml->title(\&my_title);
+				$writerhtml->hit_link_align(\&my_hit_link_align);
+	 
+				my $blast_string = $writerhtml->to_string($this_result);
+	
+				# Change link locations
+				my $ncbi_link_string = 'http:\/\/www\.ncbi\.nlm\.nih\.gov\/entrez\/query\.fcgi\?db\=nucleotide\&cmd\=search\&term\=';
+				my $ncbi_prot_link_string = 'http:\/\/www\.ncbi\.nlm\.nih\.gov\/entrez\/query\.fcgi\?db\=protein\&cmd\=search\&term\=';
+				my $replace_string = $gbrowse_organism_cgi . "?name=";
+				$blast_string =~ s/$ncbi_link_string/$replace_string/gi;
+				$blast_string =~ s/$ncbi_prot_link_string/$replace_string/gi;
+	
+				print $blast_string;
+	
+			} # End IF Succedes
+	
+		
+		}# End While next sequence
+
+	}# End If a recognized sequence
+
+	close($stringio);
+	undef $stringio;
+}
+
+	
+sub my_start_report
+{
+	my $report = shift;
+	return "";
+}
+
+sub my_title
+{
+	my $result = shift;
+	return "";
+}
+
+
+sub my_hit_link_align
+{
+	my $self = shift;
+	my $hit = shift;
+	my $result = shift;
+	my $min_val = 100000000000000;
+	my $max_val = 0;
+
+	my $hsp_string;
+	my $db = param('DATALIB');
+	my $offset = 0;
+	my $contig_name;
+	my $multiplier = 1;
+
+	if($db =~ /orfs_nt/)
+	{
+		$offset = get_orf_offset($hit->name());
+		$contig_name = get_orf_contig($hit->name());
+	} elsif($db =~ /orfs_aa/)
+	{
+		$offset = get_orf_offset($hit->name());
+		
+		$contig_name = get_orf_contig($hit->name());
+		$multiplier = 3;
+
+	} elsif($db =~ /unused_reads_nt/)
+	{
+		return get_read_link($hit->name());
+	} else
+	{
+		$contig_name = $hit->name();
+	}
+
+	while(my $hsp = $hit->next_hsp)
+	{
+		my $start;
+		my $end;
+		if($hsp->hit->start < $hsp->hit->end)
+		{
+			$start = $hsp->hit->start;
+			$end = $hsp->hit->end;
+		} else
+		{
+			$start = $hsp->hit->end;
+			$end = $hsp->hit->start;
+		}
+		$end = $end * $multiplier;
+		$start = $start * $multiplier;
+		$hsp_string .= '+' . ($start + $offset) . '-' . ( $end + $offset);
+
+		# Find area to center around
+
+		if( ($end+$offset) > $max_val)
+		{
+			$max_val = $end + $offset;
+		}
+		if( ($start+$offset) < $min_val)
+		{
+			$min_val = $start + $offset;
+		}
+
+	}
+	$min_val = $min_val - 100;
+	$max_val = $max_val +100;
+	my $return_string = '<a href="' . $gbrowse_organism_cgi . '?name=' . $contig_name . ':' . $min_val . '..' . $max_val . ';add=' . $contig_name . '+%22Blast%20Hit%22+Match' . $hsp_string . '">' ;
+	my $link_string = $return_string;
+	$return_string .=  $hit->name() . '</a>';;
+	if(param('show_img'))
+	{
+	$return_string .= "<center>$link_string<img src=\"" . $gbrowse_organism_img . "?name=" . $contig_name .  ":$min_val..$max_val;width=800;type=Contig+3+ORFs+3+Gene+3;add=$contig_name+%22Blast%20Hit%22+Match" . $hsp_string . '"></a></center>';
+	}
+
+	return $return_string;
+}
+
+
+sub get_orf_offset
+{
+
+	# This must be changed to reflect your method of finding out the offset of the orf start position
+
+	my $orfid = shift;
+
+	my $offset = 1;
+	
+	return $offset;
+
+}
+
+sub get_orf_contig
+{
+
+	# This must be changed to reflect your method of finding out the contig of the orf
+
+	my $orfid = shift;
+
+	my $contig = 'contig_33';
+	
+	return $contig;
+
+}
+
+sub get_read_link
+{
+	# This must be changed to reflect your method of linking to a read
+
+	my $read_name = shift;
+
+	return $read_name;
+
+}
